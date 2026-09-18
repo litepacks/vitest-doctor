@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run unit & integration tests
+        run: npm test
+
+      - name: Validate documentation health
+        run: |
+          npm run docs:doctor
+          npm run docs:build
+
+      - name: Restore performance baseline
+        uses: actions/cache@v4
+        with:
+          path: .vitest-doctor/baseline.json
+          key: vitest-doctor-baseline-${{ runner.os }}-${{ matrix.node-version }}-${{ github.base_ref || github.ref_name }}
+          restore-keys: |
+            vitest-doctor-baseline-${{ runner.os }}-${{ matrix.node-version }}-
+            vitest-doctor-baseline-${{ runner.os }}-
+
+      - name: Run self-diagnostics with Vitest Doctor
+        run: node dist/cli/index.js run --ci --output doctor.html
+
+      - name: Upload diagnostic HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: doctor-report-node-${{ matrix.node-version }}
+          path: doctor.html
+          retention-days: 14
+
+      - name: Update performance baseline snapshot on main
+        if: github.ref == 'refs/heads/main' && matrix.node-version == '22.x'
+        run: node dist/cli/index.js baseline
