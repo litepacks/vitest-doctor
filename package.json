@@ -82,7 +82,11 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "demo": "vitest run --dir examples/demo/tests --config examples/demo/vitest.config.ts",
-    "benchmark": "node --loader tsx benchmarks/benchmark-runner.ts"
+    "benchmark": "node --loader tsx benchmarks/benchmark-runner.ts",
+    "docs:dev": "docboot dev ./docs",
+    "docs:build": "docboot build ./docs",
+    "docs:serve": "docboot serve dist-docs",
+    "docs:doctor": "docboot doctor ./docs"
   },
   "sideEffects": false,
   "publishConfig": {
@@ -105,8 +109,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.9",
-    "tsx": "^4.19.3",
+    "docboot": "^0.4.0",
     "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
     "typescript": "^5.7.3",
     "vitest": "^3.0.7"
   }

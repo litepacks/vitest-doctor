@@ -4,7 +4,10 @@ tests/
 examples/
 benchmarks/
 
-# Tooling configurations
+docs/
+docboot.config.js
+dist-docs/
+.docboot/
 tsconfig.json
 tsup.config.ts
 vitest.config.ts
