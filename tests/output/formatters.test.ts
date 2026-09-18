@@ -90,9 +90,11 @@ describe('Output Formatters', () => {
     }
   }
 
+  const stripAnsi = (str: string) => str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')
+
   it('formats terminal output with rich structure', () => {
     const formatter = new TerminalFormatter()
-    const output = formatter.format(mockReport)
+    const output = stripAnsi(formatter.format(mockReport))
 
     expect(output).toContain('Vitest Doctor')
     expect(output).toContain('10 tests analyzed')
@@ -152,7 +154,7 @@ describe('Output Formatters', () => {
       ]
     }
 
-    const termOut = new TerminalFormatter().format(reportWithAdvice)
+    const termOut = stripAnsi(new TerminalFormatter().format(reportWithAdvice))
     expect(termOut).toContain('Vitest Config Optimization Advisor')
     expect(termOut).toContain('Disable Worker Context Isolation')
     expect(termOut).toContain('isolate: false')
@@ -179,7 +181,7 @@ describe('Output Formatters', () => {
       }
     }
 
-    const termOut = new TerminalFormatter().format(reportWithGit)
+    const termOut = stripAnsi(new TerminalFormatter().format(reportWithGit))
     expect(termOut).toContain('feature/fast-runner@1234567')
 
     const mdOut = new MarkdownFormatter().format(reportWithGit)
