@@ -1,0 +1,28 @@
+# Source files & tests
+src/
+tests/
+examples/
+benchmarks/
+
+# Tooling configurations
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+
+# Testing artifacts & caches
+coverage/
+.vitest-doctor/
+doctor.json
+doctor.html
+doctor.md
+doctor-failed.json
+*.log
+
+# Agent & workspace configurations
+.agents/
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

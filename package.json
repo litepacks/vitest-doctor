@@ -1,0 +1,113 @@
+{
+  "name": "vitest-doctor",
+  "version": "0.4.2",
+  "description": "Low-overhead performance diagnostics and root-cause analyzer for Vitest test suites",
+  "keywords": [
+    "vitest",
+    "reporter",
+    "profiler",
+    "performance",
+    "diagnostics",
+    "slow-tests",
+    "testing",
+    "benchmark"
+  ],
+  "author": "cond",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "vitest-doctor": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./reporter": {
+      "import": {
+        "types": "./dist/reporter/index.d.ts",
+        "default": "./dist/reporter/index.js"
+      },
+      "require": {
+        "types": "./dist/reporter/index.d.cts",
+        "default": "./dist/reporter/index.cjs"
+      }
+    },
+    "./plugin": {
+      "import": {
+        "types": "./dist/plugin.d.ts",
+        "default": "./dist/plugin.js"
+      },
+      "require": {
+        "types": "./dist/plugin.d.cts",
+        "default": "./dist/plugin.cjs"
+      }
+    },
+    "./setup": {
+      "import": {
+        "types": "./dist/setup.d.ts",
+        "default": "./dist/setup.js"
+      },
+      "require": {
+        "types": "./dist/setup.d.cts",
+        "default": "./dist/setup.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepublishOnly": "npm run typecheck && npm run build && npm test",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "demo": "vitest run --dir examples/demo/tests --config examples/demo/vitest.config.ts",
+    "benchmark": "node --loader tsx benchmarks/benchmark-runner.ts"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "picocolors": "^1.1.1"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0",
+    "vitest": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}
