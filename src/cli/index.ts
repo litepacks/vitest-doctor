@@ -1,10 +1,25 @@
 #!/usr/bin/env node
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import pc from 'picocolors'
 import { parseCliArgs } from './options.js'
 import { runCommand } from './commands/run.js'
 import { analyzeCommand } from './commands/analyze.js'
 import { baselineCommand } from './commands/baseline.js'
 import { pruneCommand } from './commands/prune.js'
+
+function getVersion(): string {
+  try {
+    const dir = path.dirname(fileURLToPath(import.meta.url))
+    const pkgPath = path.resolve(dir, '../../package.json')
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+      return pkg.version || '0.4.3'
+    }
+  } catch {}
+  return '0.4.3'
+}
 
 function printHelp(): void {
   console.log(`
@@ -57,7 +72,7 @@ async function main(): Promise<void> {
   }
 
   if (parsed.command === 'version') {
-    console.log('vitest-doctor v0.2.0')
+    console.log(`vitest-doctor v${getVersion()}`)
     process.exit(0)
   }
 

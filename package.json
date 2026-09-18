@@ -1,6 +1,6 @@
 {
   "name": "vitest-doctor",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Low-overhead performance diagnostics and root-cause analyzer for Vitest test suites",
   "keywords": [
     "vitest",
@@ -93,16 +93,13 @@
     "access": "public"
   },
   "dependencies": {
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "typescript": "^5.7.3"
   },
   "peerDependencies": {
-    "typescript": ">=5.0.0",
     "vitest": ">=1.0.0"
   },
   "peerDependenciesMeta": {
-    "typescript": {
-      "optional": true
-    },
     "vitest": {
       "optional": true
     }
