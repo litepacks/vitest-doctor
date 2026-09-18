@@ -4,6 +4,7 @@ export default {
   description: "Low-overhead performance diagnostics, memory leak detector, and root-cause analyzer for Vitest test suites",
   docs: "./docs",
   out: "./dist-docs",
+  base: "/vitest-doctor/",
   repo: "https://github.com/litepacks/vitest-doctor",
   theme: {
     preset: "emerald",
