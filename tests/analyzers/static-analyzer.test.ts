@@ -92,5 +92,33 @@ it('handles memory sensitive operations', () => {
     expect(findings.some(f => f.type === 'event-listener')).toBe(true)
     expect(findings.some(f => f.type === 'global-assignment' && f.name === 'globalThis.__APP_STATE__')).toBe(true)
   })
+
+  it('correctly extracts findings using fallbackRegexAnalysis when typescript is absent', () => {
+    const code = `
+import { describe, it, beforeEach } from 'vitest'
+import axios from 'axios'
+
+describe('regex fallback suite', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('async test', async () => {
+    setTimeout(() => {}, 100)
+    await axios.get('/test')
+    expect(true).toMatchSnapshot()
+  })
+})
+`
+    const findings = analyzer.fallbackRegexAnalysis('regex.test.ts', code)
+
+    expect(findings.some(f => f.type === 'hook' && f.name === 'beforeEach')).toBe(true)
+    expect(findings.some(f => f.type === 'timer' && f.name === 'setTimeout')).toBe(true)
+    expect(findings.some(f => f.type === 'fake-timer' && f.name.includes('useFakeTimers'))).toBe(true)
+    expect(findings.some(f => f.type === 'network' && f.name.includes('axios'))).toBe(true)
+    expect(findings.some(f => f.type === 'snapshot' && f.name === 'toMatchSnapshot')).toBe(true)
+    expect(findings.some(f => f.type === 'async-test')).toBe(true)
+    expect(findings.some(f => f.type === 'unrestored-fake-timers')).toBe(true)
+  })
 })
 

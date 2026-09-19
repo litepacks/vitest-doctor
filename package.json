@@ -93,13 +93,16 @@
     "access": "public"
   },
   "dependencies": {
-    "picocolors": "^1.1.1",
-    "typescript": "^5.7.3"
+    "picocolors": "^1.1.1"
   },
   "peerDependencies": {
+    "typescript": ">=5.0.0",
     "vitest": ">=1.0.0"
   },
   "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    },
     "vitest": {
       "optional": true
     }

@@ -15,6 +15,10 @@ export default defineConfig({
         verySlow: 1000,
         top: 10
       })
-    ]
-  }
+    ],
+    poolOptions: {
+      threads: { isolate: false },
+      forks: { isolate: false }
+    },
+  },
 })

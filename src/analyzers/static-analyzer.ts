@@ -1,6 +1,44 @@
 import fs from 'node:fs'
-import ts from 'typescript'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+import type tsType from 'typescript'
 import type { StaticFinding } from '../types/index.js'
+
+let cachedTs: typeof tsType | null | undefined = undefined
+
+/**
+ * Safely resolves TypeScript compiler if available in user project or current runtime,
+ * without making it a hard required dependency.
+ */
+export function getTypeScript(cwd?: string): typeof tsType | null {
+  if (cachedTs !== undefined) {
+    return cachedTs
+  }
+
+  // 1. Try resolving from target project cwd (node_modules/typescript)
+  const targetCwd = cwd || process.cwd()
+  try {
+    const cwdReq = createRequire(path.join(targetCwd, 'package.json'))
+    const loaded = cwdReq('typescript') as typeof tsType
+    cachedTs = loaded
+    return loaded
+  } catch {}
+
+  // 2. Try resolving from current file context
+  try {
+    const localReq = createRequire(import.meta.url)
+    const loaded = localReq('typescript') as typeof tsType
+    cachedTs = loaded
+    return loaded
+  } catch {}
+
+  cachedTs = null
+  return null
+}
+
+export function resetTypeScriptCache(): void {
+  cachedTs = undefined
+}
 
 export class StaticAnalyzer {
   private cache = new Map<string, StaticFinding[]>()
@@ -29,11 +67,12 @@ export class StaticAnalyzer {
   }
 
   /**
-   * Analyzes source code string using TypeScript AST parser
+   * Analyzes source code string using TypeScript AST parser (or regex fallback)
    */
   public analyzeSourceCode(filePath: string, code: string): StaticFinding[] {
+    const ts = getTypeScript()
     if (!ts || typeof ts.createSourceFile !== 'function') {
-      return []
+      return this.fallbackRegexAnalysis(filePath, code)
     }
 
     const sourceFile = ts.createSourceFile(
@@ -46,7 +85,7 @@ export class StaticAnalyzer {
 
     const findings: StaticFinding[] = []
 
-    const visit = (node: ts.Node) => {
+    const visit = (node: tsType.Node) => {
       // 1. Call Expressions
       if (ts.isCallExpression(node)) {
         const expressionText = node.expression.getText(sourceFile)
@@ -409,7 +448,7 @@ export class StaticAnalyzer {
         if (propName === 'resolves' || propName === 'rejects') {
           const exprText = node.expression.getText(sourceFile)
           if (exprText.startsWith('expect(')) {
-            let currentParent: ts.Node | undefined = node.parent
+            let currentParent: tsType.Node | undefined = node.parent
             let isAwaited = false
             let statementSnippet = ''
             while (currentParent) {
@@ -442,6 +481,293 @@ export class StaticAnalyzer {
     }
 
     visit(sourceFile)
+
+    // Check for unrestored fake timers
+    const hasFakeTimers = findings.some(f => f.type === 'fake-timer' && f.name.includes('useFakeTimers'))
+    const hasRealTimers = findings.some(f => f.type === 'fake-timer' && (f.name.includes('useRealTimers') || f.name.includes('restoreAllMocks') || f.name.includes('clearAllMocks')))
+    if (hasFakeTimers && !hasRealTimers) {
+      const fakeFinding = findings.find(f => f.type === 'fake-timer' && f.name.includes('useFakeTimers'))
+      if (fakeFinding) {
+        findings.push({
+          type: 'unrestored-fake-timers',
+          name: 'vi.useFakeTimers without cleanup',
+          file: filePath,
+          line: fakeFinding.line,
+          column: fakeFinding.column,
+          snippet: fakeFinding.snippet
+        })
+      }
+    }
+
+    return findings
+  }
+
+  /**
+   * Fallback regex-based source code analyzer when TypeScript is not installed in the target project.
+   */
+  public fallbackRegexAnalysis(filePath: string, code: string): StaticFinding[] {
+    const findings: StaticFinding[] = []
+    const lines = code.split(/\r?\n/)
+
+    for (let i = 0; i < lines.length; i++) {
+      const lineText = lines[i]
+      const lineNum = i + 1
+      const trimmed = lineText.trim()
+
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
+        continue
+      }
+
+      // Hooks
+      const hookMatch = trimmed.match(/\b(beforeEach|beforeAll|afterEach|afterAll)\s*\(/)
+      if (hookMatch) {
+        findings.push({
+          type: 'hook',
+          name: hookMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(hookMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Timers
+      const timerMatch = trimmed.match(/\b(setTimeout|setInterval|setImmediate|waitFor|sleep|delay)\s*\(/)
+      if (timerMatch) {
+        findings.push({
+          type: 'timer',
+          name: timerMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(timerMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Fake Timers
+      const fakeTimerMatch = trimmed.match(/\b(vi\.(useFakeTimers|useRealTimers|advanceTimersByTime|runAllTimers)|jest\.(useFakeTimers|useRealTimers|advanceTimersByTime|runAllTimers))\s*\(/)
+      if (fakeTimerMatch) {
+        findings.push({
+          type: 'fake-timer',
+          name: fakeTimerMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(fakeTimerMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Network
+      const networkMatch = trimmed.match(/\b(fetch|axios(\.[a-z]+)?|http\.(get|request)|https\.(get|request)|supertest|undici)\s*\(/)
+      if (networkMatch) {
+        findings.push({
+          type: 'network',
+          name: networkMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(networkMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // File I/O
+      const ioMatch = trimmed.match(/\b(fs\.(read|write|promises)|fse\.|readFileSync|writeFileSync)\b/)
+      if (ioMatch) {
+        findings.push({
+          type: 'io',
+          name: ioMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(ioMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Child Process
+      const cpMatch = trimmed.match(/\b(exec|spawn|execSync|execFile|fork)\s*\(/)
+      if (cpMatch) {
+        findings.push({
+          type: 'child-process',
+          name: cpMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(cpMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Module Reset
+      if (trimmed.includes('vi.resetModules') || trimmed.includes('jest.resetModules') || trimmed.includes('vi.doMock')) {
+        const resetMethod = trimmed.includes('vi.resetModules')
+          ? 'vi.resetModules'
+          : trimmed.includes('jest.resetModules')
+            ? 'jest.resetModules'
+            : 'vi.doMock'
+        findings.push({
+          type: 'module-reset',
+          name: resetMethod,
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(resetMethod) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Snapshot Matchers
+      const snapMatch = trimmed.match(/\b(toMatchSnapshot|toMatchInlineSnapshot|toThrowErrorMatchingSnapshot)\s*\(/)
+      if (snapMatch) {
+        findings.push({
+          type: 'snapshot',
+          name: snapMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(snapMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Database
+      const dbMatch = trimmed.match(/\b(db\.|knex\.|prisma\.|sqlite\.|mongoose\.|orm\.|\.transaction\(|\.insert\(|\.update\(|\.delete\(|\.truncate\(|\.migrate\.|\.seed\.)/)
+      if (dbMatch) {
+        findings.push({
+          type: 'database-call',
+          name: dbMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(dbMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Concurrent
+      const concMatch = trimmed.match(/\b(describe\.concurrent|test\.concurrent|it\.concurrent|suite\.concurrent)\b/)
+      if (concMatch) {
+        findings.push({
+          type: 'concurrent',
+          name: concMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(concMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // DOM Test
+      const domMatch = trimmed.match(/\b(render\(|screen\.|cleanup\(|fireEvent\.|userEvent\.)/)
+      if (domMatch) {
+        findings.push({
+          type: 'dom-test',
+          name: domMatch[1].replace('(', ''),
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(domMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Spy / Mock
+      const mockMatch = trimmed.match(/\b(vi\.spyOn|vi\.fn|jest\.spyOn|jest\.fn)\b/)
+      if (mockMatch) {
+        findings.push({
+          type: 'spy-mock',
+          name: mockMatch[1].includes('spyOn') ? 'spyOn' : 'fn',
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(mockMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Event Listener
+      const evMatch = trimmed.match(/(\.on\(|\.addListener\(|\.addEventListener\(|process\.on\()/)
+      if (evMatch) {
+        findings.push({
+          type: 'event-listener',
+          name: evMatch[1].replace('(', ''),
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(evMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Async Test
+      const asyncTestMatch = trimmed.match(/\b(it|test)(\.[a-z]+)?\s*\([^,]+,\s*async\b/)
+      if (asyncTestMatch) {
+        findings.push({
+          type: 'async-test',
+          name: asyncTestMatch[1],
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(asyncTestMatch[1]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Global Assignment
+      const globalMatch = trimmed.match(/\b(globalThis|window|global)\.[a-zA-Z0-9_$]+\s*=/)
+      if (globalMatch) {
+        findings.push({
+          type: 'global-assignment',
+          name: globalMatch[0].replace(/\s*=/, ''),
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(globalMatch[0]) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+      }
+
+      // Barrel Import
+      const importMatch = trimmed.match(/from\s+['"]([^'"]+)['"]/)
+      if (importMatch) {
+        const specifier = importMatch[1]
+        findings.push({
+          type: 'import',
+          name: specifier,
+          file: filePath,
+          line: lineNum,
+          column: lineText.indexOf(specifier) + 1,
+          snippet: trimmed.slice(0, 100)
+        })
+
+        const isBarrel =
+          specifier.endsWith('/index') ||
+          specifier.endsWith('/index.js') ||
+          specifier.endsWith('/index.ts') ||
+          specifier === '.' ||
+          specifier === '..' ||
+          specifier.endsWith('/components') ||
+          specifier.endsWith('/utils') ||
+          specifier.endsWith('/services') ||
+          specifier.endsWith('/models') ||
+          specifier.endsWith('/hooks')
+
+        if (isBarrel) {
+          findings.push({
+            type: 'barrel-import',
+            name: specifier,
+            file: filePath,
+            line: lineNum,
+            column: lineText.indexOf(specifier) + 1,
+            snippet: trimmed.slice(0, 100)
+          })
+        }
+      }
+
+      // Unawaited Promise
+      if (trimmed.includes('expect(') && (trimmed.includes('.resolves') || trimmed.includes('.rejects'))) {
+        if (!trimmed.includes('await expect(') && !trimmed.includes('return expect(')) {
+          findings.push({
+            type: 'unawaited-promise',
+            name: 'expect(...).resolves/rejects missing await',
+            file: filePath,
+            line: lineNum,
+            column: 1,
+            snippet: trimmed.slice(0, 100)
+          })
+        }
+      }
+    }
 
     // Check for unrestored fake timers
     const hasFakeTimers = findings.some(f => f.type === 'fake-timer' && f.name.includes('useFakeTimers'))
